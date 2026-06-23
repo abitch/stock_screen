@@ -72,6 +72,8 @@ def cmd_screen(args, config):
             TextColumn("{task.completed}/{task.total}"),
             TimeElapsedColumn(),
             console=console,
+            redirect_stdout=False,   # 不接管 stdout,避免退出时 rich flush 报 ImportError
+            redirect_stderr=False,
         ) as progress:
             task = progress.add_task("筛选中", total=None)
 
