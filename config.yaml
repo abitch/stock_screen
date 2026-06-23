@@ -1,0 +1,27 @@
+# 股票筛选器配置
+
+# 数据源配置
+data:
+  source: "akshare"          # 数据源(目前支持 akshare)
+  adjust: "hfq"              # 复权类型: hfq后复权 qfq前复权 ""不复权(算均线用后复权)
+  hist_days: 60              # 每只股票拉取的历史天数(算MA20至少需要20+,留余量)
+
+  # 限流配置(避免被数据源封IP)
+  rate_limit:
+    request_delay_min: 0.2   # 单次请求最小间隔(秒)
+    request_delay_max: 0.5   # 单次请求最大间隔(秒)
+    max_workers: 6           # 并发线程数(全市场筛选时)
+    max_retries: 3           # 单只股票失败重试次数
+
+# 筛选配置
+screen:
+  ma_period: 20              # 默认均线周期
+  min_data_points: 20        # 计算均线所需的最少数据点
+
+# 数据库配置
+database:
+  path: "./data/stock.db"    # SQLite 数据库路径
+
+# 输出配置
+output:
+  export_dir: "./data/exports"   # 导出文件目录
