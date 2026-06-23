@@ -149,3 +149,33 @@ class Repository:
             (run_id,),
         )
         return [dict(row) for row in cur.fetchall()]
+
+    # ---------- 自选股 ----------
+
+    def add_to_watchlist(self, code: str, name: str) -> bool:
+        """加入自选股。已存在返回 False,新增返回 True。"""
+        cur = self.conn.execute(
+            "INSERT INTO watchlist(code, name, added_at) VALUES(?,?,?) "
+            "ON CONFLICT(code) DO NOTHING",
+            (code, name, datetime.now().isoformat(timespec="seconds")),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def remove_from_watchlist(self, code: str) -> bool:
+        """从自选股移除。移除成功返回 True。"""
+        cur = self.conn.execute("DELETE FROM watchlist WHERE code=?", (code,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_watchlist(self) -> List[Dict]:
+        """获取自选股列表(按加入时间)。"""
+        cur = self.conn.execute(
+            "SELECT code, name, added_at FROM watchlist ORDER BY added_at ASC"
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def is_in_watchlist(self, code: str) -> bool:
+        cur = self.conn.execute("SELECT 1 FROM watchlist WHERE code=?", (code,))
+        return cur.fetchone() is not None
+

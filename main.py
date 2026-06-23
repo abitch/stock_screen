@@ -183,9 +183,11 @@ def cmd_show(args, config):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="A股均线筛选器")
+    parser = argparse.ArgumentParser(
+        description="A股均线筛选器(直接运行 python main.py 进入交互菜单)"
+    )
     parser.add_argument("--config", help="配置文件路径")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
     p_screen = sub.add_parser("screen", help="筛选股价在均线之上的股票")
     p_screen.add_argument("--ma", type=int, help="均线周期(默认 20)")
@@ -211,6 +213,14 @@ def main():
         cmd_history(args, config)
     elif args.command == "show":
         cmd_show(args, config)
+    else:
+        # 无子命令:进入交互式菜单
+        from app.cli.interactive import InteractiveApp
+        app = InteractiveApp(config)
+        try:
+            app.run()
+        finally:
+            app.close()
 
 
 if __name__ == "__main__":

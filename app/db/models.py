@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS daily_price (
     PRIMARY KEY (code, date)
 );
 
+-- 自选股收藏
+CREATE TABLE IF NOT EXISTS watchlist (
+    code      TEXT PRIMARY KEY,
+    name      TEXT,
+    added_at  TEXT
+);
+
 -- 每次筛选的运行记录
 CREATE TABLE IF NOT EXISTS screen_run (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

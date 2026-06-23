@@ -33,25 +33,30 @@ class Screener:
         self.max_workers = max_workers
 
     def run(self, strategy: Strategy, limit: int = None,
+            codes: list = None,
             progress_callback: Callable[[int, int], None] = None,
             force_refresh: bool = False) -> List[Dict]:
-        """对全市场跑策略筛选(支持增量缓存)。
+        """对全市场或指定股票列表跑策略筛选(支持增量缓存)。
 
         Args:
             strategy: 选股策略
             limit: 只筛选前 N 只(用于快速测试),None 表示全市场
+            codes: 指定股票列表 [(code, name), ...];传入则只筛这些(优先于 limit)
             progress_callback: 进度回调 callback(done, total)
             force_refresh: 强制重新联网拉取,忽略缓存
 
         Returns:
             命中股票的结果字典列表,按距均线百分比降序
         """
-        stock_list = self.fetcher.get_stock_list()
+        if codes is not None:
+            stock_list = pd.DataFrame(codes, columns=["code", "name"])
+        else:
+            stock_list = self.fetcher.get_stock_list()
         if stock_list.empty:
             logger.error("股票列表为空,无法筛选")
             return []
 
-        if limit:
+        if limit and codes is None:
             stock_list = stock_list.head(limit)
 
         if self.repo is not None:
