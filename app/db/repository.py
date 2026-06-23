@@ -63,6 +63,34 @@ class Repository:
         )
         self.conn.commit()
 
+    # ---------- 增量缓存读取 ----------
+
+    def get_cache_status(self) -> dict:
+        """返回每只股票的缓存状态: {code: (最新日期, 行数)}。"""
+        cur = self.conn.execute(
+            "SELECT code, MAX(date) AS latest, COUNT(*) AS cnt "
+            "FROM daily_price GROUP BY code"
+        )
+        return {row["code"]: (row["latest"], row["cnt"]) for row in cur.fetchall()}
+
+    def load_daily_price(self, code: str) -> pd.DataFrame:
+        """从库读取单只股票的历史行情。
+
+        Returns:
+            DataFrame,索引为日期,含 open/high/low/close/volume(按日期升序)
+        """
+        cur = self.conn.execute(
+            "SELECT date, open, high, low, close, volume FROM daily_price "
+            "WHERE code=? ORDER BY date ASC",
+            (code,),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame([dict(r) for r in rows])
+        df["date"] = pd.to_datetime(df["date"])
+        return df.set_index("date")[["open", "high", "low", "close", "volume"]]
+
     # ---------- 筛选结果 ----------
 
     def create_run(self, ma_period: int, strategy: str, total: int, matched: int) -> int:

@@ -33,13 +33,15 @@ class Screener:
         self.max_workers = max_workers
 
     def run(self, strategy: Strategy, limit: int = None,
-            progress_callback: Callable[[int, int], None] = None) -> List[Dict]:
-        """对全市场跑策略筛选。
+            progress_callback: Callable[[int, int], None] = None,
+            force_refresh: bool = False) -> List[Dict]:
+        """对全市场跑策略筛选(支持增量缓存)。
 
         Args:
             strategy: 选股策略
             limit: 只筛选前 N 只(用于快速测试),None 表示全市场
             progress_callback: 进度回调 callback(done, total)
+            force_refresh: 强制重新联网拉取,忽略缓存
 
         Returns:
             命中股票的结果字典列表,按距均线百分比降序
@@ -55,14 +57,38 @@ class Screener:
         if self.repo is not None:
             self.repo.upsert_stocks(stock_list)
 
+        # 增量缓存:确定最新交易日 + 读取每只股票的缓存状态
+        latest_trading_date = None
+        cache_status = {}
+        min_points = getattr(strategy, "min_data_points", 20)
+        if self.repo is not None and not force_refresh:
+            latest_trading_date = self._probe_latest_trading_date()
+            cache_status = self.repo.get_cache_status()
+            if latest_trading_date:
+                logger.info("最新交易日 %s,已缓存 %d 只", latest_trading_date, len(cache_status))
+
         total = len(stock_list)
         done = 0
         matched: List[Dict] = []
+        cache_hits = 0
 
-        def process(code: str, name: str) -> Tuple[str, str, Optional[pd.DataFrame]]:
-            """工作线程:仅拉数据,不碰数据库。"""
-            hist = self.fetcher.get_stock_hist(code)
-            return code, name, hist
+        def needs_fetch(code: str) -> bool:
+            """判断该股票是否需要联网拉取(缓存不够新/不够多则需要)。"""
+            if force_refresh or latest_trading_date is None:
+                return True
+            cached = cache_status.get(code)
+            if cached is None:
+                return True
+            cached_latest, cached_count = cached
+            # 缓存已到最新交易日,且数据点足够算策略 -> 用缓存
+            return not (cached_latest >= latest_trading_date and cached_count >= min_points)
+
+        def process(code: str, name: str) -> Tuple[str, str, Optional[pd.DataFrame], bool]:
+            """工作线程:按需联网拉取;命中缓存的不在此联网(留主线程读库)。"""
+            if needs_fetch(code):
+                hist = self.fetcher.get_stock_hist(code)
+                return code, name, hist, False  # False=非缓存,需写库
+            return code, name, None, True        # True=走缓存,主线程读库
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
@@ -74,13 +100,18 @@ class Screener:
                 if progress_callback:
                     progress_callback(done, total)
                 try:
-                    code, name, hist = future.result()
+                    code, name, hist, from_cache = future.result()
+
+                    if from_cache:
+                        # 缓存命中:主线程从库读取
+                        cache_hits += 1
+                        hist = self.repo.load_daily_price(code)
+                    elif hist is not None and not hist.empty and self.repo is not None:
+                        # 新拉取的数据:写入缓存(主线程)
+                        self.repo.save_daily_price(code, hist)
+
                     if hist is None or hist.empty:
                         continue
-
-                    # DB 写入在主线程完成
-                    if self.repo is not None:
-                        self.repo.save_daily_price(code, hist)
 
                     result = strategy.evaluate(hist)
                     if result is None or not result.matched:
@@ -99,6 +130,8 @@ class Screener:
                     logger.debug("处理 %s 失败: %s", futures[future], e)
 
         matched.sort(key=lambda x: x["distance_pct"], reverse=True)
+        logger.info("筛选完成: 共 %d 只,缓存命中 %d 只,联网 %d 只,命中策略 %d 只",
+                    total, cache_hits, total - cache_hits, len(matched))
 
         # 保存运行记录
         if self.repo is not None:
@@ -112,3 +145,17 @@ class Screener:
             logger.info("筛选结果已保存,run_id=%d", run_id)
 
         return matched
+
+    def _probe_latest_trading_date(self, ref_code: str = "000001") -> Optional[str]:
+        """探针:用参考股票(默认平安银行)取最新交易日,格式 YYYY-MM-DD。
+
+        用真实行情确定最新交易日,避免自行判断节假日/周末。
+        """
+        try:
+            hist = self.fetcher.get_stock_hist(ref_code)
+            if hist is None or hist.empty:
+                return None
+            return hist.index[-1].strftime("%Y-%m-%d")
+        except Exception as e:
+            logger.warning("探测最新交易日失败: %s", str(e)[:80])
+            return None

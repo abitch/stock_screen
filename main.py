@@ -78,7 +78,11 @@ def cmd_screen(args, config):
             def on_progress(done, total):
                 progress.update(task, completed=done, total=total)
 
-            results = screener.run(strategy, limit=args.limit, progress_callback=on_progress)
+            results = screener.run(
+                strategy, limit=args.limit,
+                progress_callback=on_progress,
+                force_refresh=args.refresh,
+            )
 
     _print_results(results, ma_period)
 
@@ -185,6 +189,8 @@ def main():
     p_screen.add_argument("--ma", type=int, help="均线周期(默认 20)")
     p_screen.add_argument("--limit", type=int, help="只筛前 N 只(快速测试)")
     p_screen.add_argument("--export", help="导出结果文件名(.csv 或 .xlsx)")
+    p_screen.add_argument("--refresh", action="store_true",
+                          help="强制重新联网拉取,忽略本地缓存")
 
     p_history = sub.add_parser("history", help="查看历史筛选记录")
     p_history.add_argument("--limit", type=int, help="显示条数(默认 20)")
