@@ -66,15 +66,18 @@ stock-screener/
 
 ## 数据源说明 ⚠️
 
-本工具支持两个免费数据源,通过 `config.yaml` 的 `data.hist_source` 切换:
+本工具支持多个免费数据源,通过 `config.yaml` 的 `data.hist_source` 切换:
 
 | 取值 | 说明 |
 |------|------|
-| `baostock`(默认) | 走 baostock 自有服务器,**稳定,推荐**,不受东方财富接口拦截影响 |
-| `eastmoney` | 只用东方财富(akshare),数据更实时,但部分网络会被拦截 |
-| `auto` | 东方财富优先,失败自动回退到 baostock |
+| `sina`(默认) | 新浪,**支持高并发,最快**(全市场约比 baostock 快数倍),推荐 |
+| `baostock` | baostock 自有服务器,稳定但单连接串行,较慢 |
+| `eastmoney` | 东方财富(akshare),数据实时,但部分网络会被拦截 |
+| `auto` | 新浪优先,失败自动回退 baostock |
 
-东方财富的 `push2`/`push2his` 接口在部分公司网络/代理环境下会被拦截或限流(表现为 `SSL: UNEXPECTED_EOF_WHILE_READING` 或 `RemoteDisconnected`)。默认用 baostock 可避开这个问题。家庭网络通畅时可改用 `eastmoney` 或 `auto` 获取更实时的数据。
+东方财富的 `push2`/`push2his` 接口在部分公司网络/代理环境下会被拦截或限流(表现为 `SSL: UNEXPECTED_EOF_WHILE_READING` 或 `RemoteDisconnected`)。新浪和 baostock 不受此影响。
+
+> ⚠️ **换数据源后请用 `--refresh` 重建缓存**:不同数据源的后复权基准价不同(绝对价格不一样,但 MA 站上/跌破的判断一致)。同一只股票的历史必须来自同一个源,否则缓存里混入不同基准的价格会导致均线计算错误。
 
 > 股票列表始终通过 akshare 的 `stock_info_a_code_name` 等轻量接口获取(带多接口自动回退)。
 

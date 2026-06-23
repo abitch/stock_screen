@@ -3,15 +3,15 @@
 # 数据源配置
 data:
   source: "akshare"          # 数据源(目前支持 akshare)
-  hist_source: "baostock"    # 历史行情源: baostock(稳定,推荐) / eastmoney / auto(东方财富失败自动切baostock)
+  hist_source: "sina"        # 历史行情源: sina(新浪,支持高并发,最快,推荐) / baostock / eastmoney / auto(新浪失败回退baostock)
   adjust: "hfq"              # 复权类型: hfq后复权 qfq前复权 ""不复权(算均线用后复权)
   hist_days: 60              # 每只股票拉取的历史天数(算MA20至少需要20+,留余量)
 
   # 限流配置(避免被数据源封IP)
   rate_limit:
-    request_delay_min: 0.2   # 单次请求最小间隔(秒)
-    request_delay_max: 0.5   # 单次请求最大间隔(秒)
-    max_workers: 6           # 并发线程数(全市场筛选时)
+    request_delay_min: 0.05  # 单次请求最小间隔(秒);新浪可较小,baostock 建议调大
+    request_delay_max: 0.2   # 单次请求最大间隔(秒)
+    max_workers: 12          # 并发线程数(新浪支持高并发;baostock 内部串行不受此影响)
     max_retries: 3           # 单只股票失败重试次数
 
 # 筛选配置
