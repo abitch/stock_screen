@@ -7,8 +7,8 @@ __pycache__/
 venv/
 
 # 数据与日志(运行时生成,不入库)
-data/
-logs/
+/data/
+/logs/
 *.db
 *.sqlite
 

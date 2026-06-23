@@ -36,6 +36,30 @@ class Repository:
         )
         self.conn.commit()
 
+    def get_all_stocks(self) -> pd.DataFrame:
+        """从库读取全部股票基础信息。
+
+        Returns:
+            DataFrame,含 code, name 两列(库为空时返回空表)
+        """
+        cur = self.conn.execute("SELECT code, name FROM stocks ORDER BY code ASC")
+        rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame(columns=["code", "name"])
+        return pd.DataFrame([dict(r) for r in rows])
+
+    def stocks_age_days(self) -> Optional[float]:
+        """返回股票列表缓存的年龄(天)。库为空返回 None。"""
+        cur = self.conn.execute("SELECT MAX(updated_at) AS latest FROM stocks")
+        row = cur.fetchone()
+        if not row or not row["latest"]:
+            return None
+        try:
+            updated = datetime.fromisoformat(row["latest"])
+        except ValueError:
+            return None
+        return (datetime.now() - updated).total_seconds() / 86400.0
+
     # ---------- 历史行情缓存 ----------
 
     def save_daily_price(self, code: str, hist: pd.DataFrame):

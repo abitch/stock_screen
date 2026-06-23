@@ -26,8 +26,9 @@ class InteractiveApp:
         self.config = config
         self.ma_period = config["screen"]["ma_period"]
         self.max_workers = config["data"]["rate_limit"]["max_workers"]
-        self.fetcher = AkShareFetcher(config)
         self.repo = Repository(config["database"]["path"])
+        # 传入 repo,股票列表走本地持久缓存,避免每次启动联网拉全市场
+        self.fetcher = AkShareFetcher(config, repo=self.repo)
 
     def close(self):
         self.repo.close()
@@ -74,52 +75,41 @@ class InteractiveApp:
     # ---------- 自选股展示 ----------
 
     def show_watchlist(self):
-        """展示自选股,联网拉取实时价与 MA20 状态"""
+        """展示自选股行情(最新价/涨跌额/涨跌幅),参考东方财富风格。
+
+        仅拉取实时快照,不计算 MA20。均线判断请用菜单 3 手动触发。
+        """
         watch = self.repo.get_watchlist()
         if not watch:
             console.print("[yellow]自选股为空,用菜单 1 搜索并收藏股票[/]")
             return
 
-        console.print(f"\n[bold]我的自选股[/] (共 {len(watch)} 只,正在获取最新价...)")
-        strategy = MAAboveStrategy(self.ma_period)
-        rows = []
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            console=console,
-            redirect_stdout=False,
-            redirect_stderr=False,
-            transient=True,
-        ) as progress:
-            task = progress.add_task("获取中", total=len(watch))
-            for item in watch:
-                hist = self.fetcher.get_stock_hist(item["code"])
-                result = strategy.evaluate(hist) if hist is not None and not hist.empty else None
-                rows.append((item, result))
-                progress.advance(task)
+        console.print(f"\n[bold]我的自选股[/] (共 {len(watch)} 只,正在获取最新行情...)")
+        codes = [item["code"] for item in watch]
+        quotes = self.fetcher.get_realtime_quotes(codes)
 
-        table = Table(title=f"我的自选股 (MA{self.ma_period})")
+        table = Table(title="我的自选股")
         table.add_column("代码", style="cyan")
         table.add_column("名称")
         table.add_column("最新价", justify="right")
-        table.add_column(f"MA{self.ma_period}", justify="right")
-        table.add_column("距均线%", justify="right")
-        table.add_column("状态", justify="center")
-        table.add_column("日期")
+        table.add_column("涨跌额", justify="right")
+        table.add_column("涨跌幅%", justify="right")
 
-        for item, result in rows:
-            if result is None:
-                table.add_row(item["code"], item["name"], "-", "-", "-",
-                              "[dim]无数据[/]", "-")
+        for item in watch:
+            q = quotes.get(item["code"])
+            if not q or q["price"] != q["price"]:  # None 或 NaN
+                table.add_row(item["code"], item["name"], "[dim]停牌/无数据[/]",
+                              "-", "-")
                 continue
-            status = "[red]站上[/]" if result.matched else "[green]跌破[/]"
-            dist_style = "red" if result.distance_pct >= 0 else "green"
+            # A股惯例:涨红跌绿
+            chg = q["change"]
+            pct = q["change_pct"]
+            color = "red" if chg >= 0 else "green"
             table.add_row(
                 item["code"], item["name"],
-                f"{result.close:.2f}", f"{result.ref_value:.2f}",
-                f"[{dist_style}]{result.distance_pct:+.2f}[/]",
-                status, result.trade_date,
+                f"[{color}]{q['price']:.2f}[/]",
+                f"[{color}]{chg:+.2f}[/]",
+                f"[{color}]{pct:+.2f}[/]",
             )
         console.print(table)
 
@@ -129,38 +119,68 @@ class InteractiveApp:
         keyword = Prompt.ask("输入股票代码或名称关键词").strip()
         if not keyword:
             return
-        results = self.fetcher.search(keyword, limit=20)
+        results = self.fetcher.search(keyword)  # 返回全部匹配,本地分页
         if results.empty:
             console.print("[yellow]没有匹配的股票[/]")
             return
 
-        table = Table(title=f"搜索结果: {keyword}")
-        table.add_column("序号", style="cyan", justify="right")
-        table.add_column("代码")
-        table.add_column("名称")
-        table.add_column("已收藏", justify="center")
-        codes = []
-        for i, row in results.iterrows():
-            in_wl = self.repo.is_in_watchlist(row["code"])
-            table.add_row(str(i + 1), row["code"], row["name"],
-                          "✓" if in_wl else "")
-            codes.append((row["code"], row["name"]))
-        console.print(table)
+        total = len(results)
+        page_size = 20
+        pages = (total + page_size - 1) // page_size
+        page = 0  # 0-based
 
-        sel = Prompt.ask("输入序号收藏(多个用逗号分隔,回车取消)", default="").strip()
-        if not sel:
-            return
-        added = 0
-        for part in sel.split(","):
-            part = part.strip()
-            if not part.isdigit():
+        while True:
+            start = page * page_size
+            end = min(start + page_size, total)
+            chunk = results.iloc[start:end]
+
+            table = Table(
+                title=f"搜索结果: {keyword}  (第 {page + 1}/{pages} 页,共 {total} 条)"
+            )
+            table.add_column("序号", style="cyan", justify="right")
+            table.add_column("代码")
+            table.add_column("名称")
+            table.add_column("已收藏", justify="center")
+            # 序号用全局序号(start+i+1),跨页唯一,方便直接输入收藏
+            for offset, (_, row) in enumerate(chunk.iterrows()):
+                global_no = start + offset + 1
+                in_wl = self.repo.is_in_watchlist(row["code"])
+                table.add_row(str(global_no), row["code"], row["name"],
+                              "✓" if in_wl else "")
+            console.print(table)
+
+            hint = "输入序号收藏(多个用逗号分隔)"
+            nav = []
+            if page < pages - 1:
+                nav.append("[cyan]n[/]下一页")
+            if page > 0:
+                nav.append("[cyan]p[/]上一页")
+            nav.append("[cyan]回车[/]取消")
+            console.print("  ".join(nav) + f"  ({hint})")
+
+            sel = Prompt.ask("操作", default="").strip()
+            if not sel:
+                return
+            if sel.lower() == "n" and page < pages - 1:
+                page += 1
                 continue
-            idx = int(part) - 1
-            if 0 <= idx < len(codes):
-                code, name = codes[idx]
-                if self.repo.add_to_watchlist(code, name):
-                    added += 1
-        console.print(f"[green]已收藏 {added} 只[/]")
+            if sel.lower() == "p" and page > 0:
+                page -= 1
+                continue
+
+            # 否则按序号收藏(全局序号,1-based)
+            added = 0
+            for part in sel.split(","):
+                part = part.strip()
+                if not part.isdigit():
+                    continue
+                idx = int(part) - 1
+                if 0 <= idx < total:
+                    row = results.iloc[idx]
+                    if self.repo.add_to_watchlist(row["code"], row["name"]):
+                        added += 1
+            console.print(f"[green]已收藏 {added} 只[/]")
+            return
 
     # ---------- 移除自选 ----------
 
