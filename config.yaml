@@ -3,6 +3,7 @@
 # 数据源配置
 data:
   source: "akshare"          # 数据源(目前支持 akshare)
+  hist_source: "baostock"    # 历史行情源: baostock(稳定,推荐) / eastmoney / auto(东方财富失败自动切baostock)
   adjust: "hfq"              # 复权类型: hfq后复权 qfq前复权 ""不复权(算均线用后复权)
   hist_days: 60              # 每只股票拉取的历史天数(算MA20至少需要20+,留余量)
 

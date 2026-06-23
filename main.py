@@ -211,3 +211,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         console.print("\n[yellow]已中断[/]")
         sys.exit(1)
+    finally:
+        # 释放 baostock 会话(若用过)
+        try:
+            from app.data.baostock_fetcher import BaostockFetcher
+            BaostockFetcher.logout()
+        except Exception:
+            pass

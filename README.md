@@ -62,10 +62,17 @@ stock-screener/
 
 ## 数据源说明 ⚠️
 
-默认数据源 akshare 依赖东方财富 (eastmoney) 接口。**部分公司网络会拦截 eastmoney 的 `push2`/`push2his` 接口**(表现为 `SSL: UNEXPECTED_EOF_WHILE_READING`)。如遇此问题:
+本工具支持两个免费数据源,通过 `config.yaml` 的 `data.hist_source` 切换:
 
-- 换用家庭网络 / 手机热点通常即可正常
-- 后续可接入 baostock 作为备用数据源(不依赖 eastmoney)
+| 取值 | 说明 |
+|------|------|
+| `baostock`(默认) | 走 baostock 自有服务器,**稳定,推荐**,不受东方财富接口拦截影响 |
+| `eastmoney` | 只用东方财富(akshare),数据更实时,但部分网络会被拦截 |
+| `auto` | 东方财富优先,失败自动回退到 baostock |
+
+东方财富的 `push2`/`push2his` 接口在部分公司网络/代理环境下会被拦截或限流(表现为 `SSL: UNEXPECTED_EOF_WHILE_READING` 或 `RemoteDisconnected`)。默认用 baostock 可避开这个问题。家庭网络通畅时可改用 `eastmoney` 或 `auto` 获取更实时的数据。
+
+> 股票列表始终通过 akshare 的 `stock_info_a_code_name` 等轻量接口获取(带多接口自动回退)。
 
 ## 扩展策略
 
